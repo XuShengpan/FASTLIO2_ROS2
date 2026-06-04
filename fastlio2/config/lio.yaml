@@ -18,6 +18,7 @@ na: 0.01
 ng: 0.01
 nba: 0.0001
 nbg: 0.0001
+imu_acc_scale: 10.0
 
 imu_init_num: 20
 near_search_num: 5

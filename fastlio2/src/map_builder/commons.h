@@ -77,10 +77,27 @@ struct Pose
     Pose(double t, const V3D &a, const V3D &g, const V3D &v, const V3D &p, const M3D &r) : offset(t), acc(a), gyro(g), vel(v), trans(p), rot(r) {}
 };
 
+struct LidarFrame
+{
+    double start_time;
+    double end_time;
+    CloudType::Ptr cloud;
+
+    LidarFrame() = default;
+    LidarFrame(double start_time_, double end_time_, CloudType::Ptr cloud_)
+        : start_time(start_time_), end_time(end_time_), cloud(cloud_)
+    {
+    }
+};
+
 struct SyncPackage
 {
     Vec<IMUData> imus;
-    CloudType::Ptr cloud;
-    double cloud_start_time = 0.0;
-    double cloud_end_time = 0.0;
+    LidarFrame   lidar;
+
+    SyncPackage() = default;
+    SyncPackage(LidarFrame lidar, Vec<IMUData>&& imus_)
+        : lidar(lidar), imus(std::move(imus_))
+    {
+    }
 };

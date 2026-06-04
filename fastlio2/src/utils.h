@@ -7,6 +7,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <builtin_interfaces/msg/time.hpp>
+#include "map_builder/commons.h"
 
 #define RESET "\033[0m"
 #define BLACK "\033[30m"  /* Black */
@@ -24,6 +25,13 @@ public:
     // static pcl::PointCloud<pcl::PointXYZ>::Ptr convertToPCL(const sensor_msgs::msg::PointCloud2 &msg);
     // static sensor_msgs::msg::PointCloud2 convertToROS(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
     static double getSec(std_msgs::msg::Header &header);
-    static pcl::PointCloud<pcl::PointXYZINormal>::Ptr livox2PCL(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg, int filter_num, double min_range = 0.5, double max_range = 20.0);
+
     static builtin_interfaces::msg::Time getTime(const double& sec);
+
+    static LidarFrame livox2PCL(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg,
+        int filter_num, double min_range = 0.5, double max_range = 20.0);
+
+    static LidarFrame hesai2PCL(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
+        int filter_num, double min_range = 1.0, double max_range = 20.0);
+
 };

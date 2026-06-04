@@ -1,4 +1,6 @@
 #include "map_builder.h"
+#include "debug_object.h"
+
 MapBuilder::MapBuilder(Config &config, std::shared_ptr<IESKF> kf) : m_config(config), m_kf(kf)
 {
     m_imu_processor = std::make_shared<IMUProcessor>(config, kf);
@@ -19,7 +21,7 @@ void MapBuilder::process(SyncPackage &package)
 
     if (m_status == BuilderStatus::MAP_INIT)
     {
-        CloudType::Ptr cloud_world = LidarProcessor::transformCloud(package.cloud, m_lidar_processor->r_wl(), m_lidar_processor->t_wl());
+        CloudType::Ptr cloud_world = LidarProcessor::transformCloud(package.lidar.cloud, m_lidar_processor->r_wl(), m_lidar_processor->t_wl());
         m_lidar_processor->initCloudMap(cloud_world->points);
         m_status = BuilderStatus::MAPPING;
         return;

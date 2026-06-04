@@ -17,10 +17,6 @@ class LidarProcessor
 public:
     LidarProcessor(Config &config, std::shared_ptr<IESKF> kf);
 
-    void trimCloudMap();
-
-    void incrCloudMap();
-
     void initCloudMap(PointVec &point_vec);
 
     void process(SyncPackage &package);
@@ -32,17 +28,23 @@ public:
     V3D t_wl() { return m_kf->x().t_wi + m_kf->x().r_wi * m_kf->x().t_il; }
 
 private:
+    void initVectors();
+    void trimCloudMap();
+    void incrCloudMap();
+
+private:
     Config m_config;
     LocalMap m_local_map;
     std::shared_ptr<IESKF> m_kf;
     std::shared_ptr<KD_TREE<PointType>> m_ikdtree;
     CloudType::Ptr m_cloud_lidar;
     CloudType::Ptr m_cloud_down_lidar;
-    CloudType::Ptr m_cloud_down_world;
-    std::vector<bool> m_point_selected_flag;
-    CloudType::Ptr m_norm_vec;
-    CloudType::Ptr m_effect_cloud_lidar;
-    CloudType::Ptr m_effect_norm_vec;
+
+    //m x 4
+    Eigen::MatrixXd   m_normal_matrix;
+    Eigen::VectorXd   m_residuals;
+    std::vector<char> m_point_selected_flag;
     std::vector<PointVec> m_nearest_points;
+
     pcl::VoxelGrid<PointType> m_scan_filter;
 };

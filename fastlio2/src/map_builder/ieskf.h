@@ -10,18 +10,19 @@ using V12D = Eigen::Matrix<double, 12, 1>;
 using V21D = Eigen::Matrix<double, 21, 1>;
 using M21X12D = Eigen::Matrix<double, 21, 12>;
 
-M3D Jr(const V3D &inp);
-M3D JrInv(const V3D &inp);
-
 struct SharedState
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     M12D H;
     V12D b;
-    double res = 1e10;
-    bool valid = false;
-    size_t iter_num = 0;
+    bool valid {false};
+    size_t iter_num {0};
+
+    void reset() {
+        iter_num = 0;
+        valid = false;
+    }
 };
 struct Input
 {
@@ -33,6 +34,7 @@ public:
     Input(V3D &a, V3D &g) : acc(a), gyro(g) {}
     Input(double a1, double a2, double a3, double g1, double g2, double g3) : acc(a1, a2, a3), gyro(g1, g2, g3) {}
 };
+
 struct State
 {
     static double gravity;
@@ -81,4 +83,8 @@ private:
     stop_func m_stop_func;
     M21D m_F;
     M21X12D m_G;
+
+    V21D m_dx;
+
+    SharedState m_shared_data;
 };
