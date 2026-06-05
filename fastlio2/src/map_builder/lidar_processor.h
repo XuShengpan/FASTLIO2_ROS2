@@ -6,7 +6,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <sophus/se3.hpp>
-#include "local_map.h"
+#include "voxel_map.h"
 
 class LidarProcessor
 {
@@ -24,8 +24,11 @@ public:
     V3D t_wl() { return m_kf->x().t_wi + m_kf->x().r_wi * m_kf->x().t_il; }
 
 private:
-    Config m_config;
-    LocalMap m_local_map;
+    Config   m_config;
+    VoxelMap m_voxel_map;
+
+    CloudType::Ptr m_map_cloud;
+
     pcl::KdTreeFLANN<PointType> m_kdtree;
 
     std::shared_ptr<IESKF> m_kf;
@@ -41,6 +44,5 @@ private:
     CloudType::Ptr    m_cloud_world;
 
     pcl::VoxelGrid<PointType> m_scan_filter;
-
-    std::vector<int> m_ptids_map;
+    pcl::VoxelGrid<PointType> m_map_filter;
 };

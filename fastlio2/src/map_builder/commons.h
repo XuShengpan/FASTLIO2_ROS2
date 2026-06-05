@@ -23,7 +23,7 @@ template <typename T>
 using Vec = std::vector<T>;
 
 
-bool esti_plane(PointVec &points, const double &thresh, V4D &out);
+bool esti_plane(const PointVec &points, const double &thresh, V4D &out);
 
 float sq_dist(const PointType &p1, const PointType &p2);
 
