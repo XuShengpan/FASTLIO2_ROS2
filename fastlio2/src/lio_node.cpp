@@ -75,6 +75,7 @@ public:
         m_kf = std::make_shared<IESKF>();
         m_builder = std::make_shared<MapBuilder>(m_builder_config, m_kf);
         m_timer = this->create_wall_timer(20ms, std::bind(&LIONode::timerCB, this));
+        m_package_timer = this->create_wall_timer(50ms, std::bind(&LIONode::syncPackage, this));
 
         if (m_node_config.print_time_cost) {
             time_log.open("time_log.txt");
@@ -197,19 +198,19 @@ public:
         m_state_data.lidar_buffer.push_back(std::move(lidar));
     }
 
-    bool syncPackage()
+    void syncPackage()
     {
         SyncPackage new_package;
 
         {
             std::lock_guard<std::mutex> lock1(m_state_data.imu_mutex);
             if (m_state_data.imu_buffer.empty()) {
-                return false;
+                return;
             }
 
             std::lock_guard<std::mutex> lock2(m_state_data.lidar_mutex);
             if (m_state_data.lidar_buffer.empty()) {
-                return false;
+                return;
             }
 
             new_package.lidar = m_state_data.lidar_buffer.front();
@@ -217,7 +218,7 @@ public:
             const double cloud_end_time = new_package.lidar.end_time;
 
             if (m_state_data.last_imu_time < cloud_end_time) {
-                return false;
+                return;
             }
 
             m_state_data.lidar_buffer.pop_front();
@@ -228,9 +229,10 @@ public:
             }
         }
 
-        std::swap(new_package, m_package);
-
-        return true;
+        {
+            std::lock_guard<std::mutex> lock1(m_package_mutex);
+            m_packages.emplace_back(std::move(new_package));
+        }
     }
 
     void publishCloud(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub, CloudType::Ptr cloud, std::string frame_id, const double &time)
@@ -307,11 +309,17 @@ public:
 
     void timerCB()
     {
-        if (!syncPackage())
-            return;
+        SyncPackage package;
+        {
+            std::lock_guard<std::mutex> lock(m_package_mutex);
+            if (m_packages.empty())
+                return;
+            package = std::move(m_packages.front());
+            m_packages.pop_front();
+        }
 
         auto t1 = std::chrono::high_resolution_clock::now();
-        m_builder->process(m_package);
+        m_builder->process(package);
         auto t2 = std::chrono::high_resolution_clock::now();
 
         if (m_node_config.print_time_cost)
@@ -325,19 +333,19 @@ public:
         if (m_builder->status() != BuilderStatus::MAPPING)
             return;
 
-        broadCastTF(m_tf_broadcaster, m_node_config.world_frame, m_node_config.body_frame, m_package.lidar.end_time);
+        broadCastTF(m_tf_broadcaster, m_node_config.world_frame, m_node_config.body_frame, package.lidar.end_time);
 
-        publishOdometry(m_odom_pub, m_node_config.world_frame, m_node_config.body_frame, m_package.lidar.end_time);
+        publishOdometry(m_odom_pub, m_node_config.world_frame, m_node_config.body_frame, package.lidar.end_time);
 
-        CloudType::Ptr body_cloud = m_builder->lidar_processor()->transformCloud(m_package.lidar.cloud, m_kf->x().r_il, m_kf->x().t_il);
+        CloudType::Ptr body_cloud = m_builder->lidar_processor()->transformCloud(package.lidar.cloud, m_kf->x().r_il, m_kf->x().t_il);
 
-        publishCloud(m_body_cloud_pub, body_cloud, m_node_config.body_frame, m_package.lidar.end_time);
+        publishCloud(m_body_cloud_pub, body_cloud, m_node_config.body_frame, package.lidar.end_time);
 
         //CloudType::Ptr world_cloud = m_builder->lidar_processor()->transformCloud(m_package.lidar.cloud, m_builder->lidar_processor()->r_wl(), m_builder->lidar_processor()->t_wl());
 
         //publishCloud(m_world_cloud_pub, world_cloud, m_node_config.world_frame, m_package.lidar.end_time);
 
-        publishPath(m_path_pub, m_node_config.world_frame, m_package.lidar.end_time);
+        publishPath(m_path_pub, m_node_config.world_frame, package.lidar.end_time);
     }
 
 private:
@@ -350,8 +358,11 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr m_odom_pub;
 
     rclcpp::TimerBase::SharedPtr m_timer;
+    rclcpp::TimerBase::SharedPtr m_package_timer;
     StateData m_state_data;
-    SyncPackage m_package;
+    std::deque<SyncPackage> m_packages;
+    std::mutex m_package_mutex;
+
     NodeConfig m_node_config;
     Config m_builder_config;
     std::shared_ptr<IESKF> m_kf;

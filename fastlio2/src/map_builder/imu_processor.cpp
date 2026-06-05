@@ -67,7 +67,8 @@ void IMUProcessor::undistort(SyncPackage &package)
 
     double dt = 0.0;
     Input inp;
-    for (auto it_imu = m_imu_cache.begin(); it_imu < (m_imu_cache.end() - 1); it_imu++)
+    const auto it_last = m_imu_cache.end() - 1;
+    for (auto it_imu = m_imu_cache.begin(); it_imu < it_last; it_imu++)
     {
         IMUData &head = *it_imu;
         IMUData &tail = *(it_imu + 1);
