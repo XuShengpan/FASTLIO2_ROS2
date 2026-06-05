@@ -1,12 +1,9 @@
 #include "lidar_processor.h"
 #include <algorithm>
 #include <omp.h>
-#include "debug_object.h"
 
 LidarProcessor::LidarProcessor(Config &config, std::shared_ptr<IESKF> kf) : m_config(config), m_kf(kf)
 {
-    m_ikdtree = std::make_shared<KD_TREE<PointType>>();
-    m_ikdtree->set_downsample_param(m_config.map_resolution);
     m_cloud_down_lidar.reset(new CloudType);
 
     if (m_config.scan_resolution > 0.0)
@@ -20,141 +17,13 @@ LidarProcessor::LidarProcessor(Config &config, std::shared_ptr<IESKF> kf) : m_co
                           { V3D rot_delta = delta.block<3, 1>(0, 0);
                             V3D t_delta = delta.block<3, 1>(3, 0);
                             return (rot_delta.norm() * 57.3 < 0.01) && (t_delta.norm() * 100 < 0.015); });
+
+    m_cloud_world = std::make_shared<CloudType>();
 }
 
-void LidarProcessor::trimCloudMap()
+void LidarProcessor::initCloudMap(CloudType::Ptr init_cloud_world)
 {
-    m_local_map.cub_to_rm.clear();
-    const State &state = m_kf->x();
-    Eigen::Vector3d pos_lidar = state.t_wi + state.r_wi * state.t_il;
-
-    const double cube_len_half = m_config.cube_len * 0.5;
-
-    if (!m_local_map.initialed)
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            m_local_map.local_map_corner.vertex_min[i] = pos_lidar[i] - cube_len_half;
-            m_local_map.local_map_corner.vertex_max[i] = pos_lidar[i] + cube_len_half;
-        }
-        m_local_map.initialed = true;
-        return;
-    }
-    float dist_to_map_edge[3][2];
-    bool need_move = false;
-    double det_thresh = m_config.move_thresh * m_config.det_range;
-    for (int i = 0; i < 3; i++)
-    {
-        dist_to_map_edge[i][0] = fabs(pos_lidar(i) - m_local_map.local_map_corner.vertex_min[i]);
-        dist_to_map_edge[i][1] = fabs(pos_lidar(i) - m_local_map.local_map_corner.vertex_max[i]);
-
-        if (dist_to_map_edge[i][0] <= det_thresh || dist_to_map_edge[i][1] <= det_thresh)
-            need_move = true;
-    }
-    if (!need_move)
-        return;
-    BoxPointType new_corner, temp_corner;
-    new_corner = m_local_map.local_map_corner;
-    float mov_dist = std::max((m_config.cube_len - 2.0 * m_config.move_thresh * m_config.det_range) * 0.5 * 0.9, double(m_config.det_range * (m_config.move_thresh - 1)));
-
-    for (int i = 0; i < 3; i++)
-    {
-        temp_corner = m_local_map.local_map_corner;
-        if (dist_to_map_edge[i][0] <= det_thresh)
-        {
-            new_corner.vertex_max[i] -= mov_dist;
-            new_corner.vertex_min[i] -= mov_dist;
-            temp_corner.vertex_min[i] = m_local_map.local_map_corner.vertex_max[i] - mov_dist;
-            m_local_map.cub_to_rm.push_back(temp_corner);
-        }
-        else if (dist_to_map_edge[i][1] <= det_thresh)
-        {
-            new_corner.vertex_max[i] += mov_dist;
-            new_corner.vertex_min[i] += mov_dist;
-            temp_corner.vertex_max[i] = m_local_map.local_map_corner.vertex_min[i] + mov_dist;
-            m_local_map.cub_to_rm.push_back(temp_corner);
-        }
-    }
-    m_local_map.local_map_corner = new_corner;
-
-    PointVec points_history;
-    m_ikdtree->acquire_removed_points(points_history);
-
-    // 删除局部地图之外的点云
-    if (m_local_map.cub_to_rm.size() > 0)
-        m_ikdtree->Delete_Point_Boxes(m_local_map.cub_to_rm);
-    return;
-}
-
-void LidarProcessor::incrCloudMap()
-{
-    if (m_cloud_down_lidar->empty())
-        return;
-    const State &state = m_kf->x();
-    int size = m_cloud_down_lidar->size();
-    PointVec point_to_add;
-    PointVec point_no_need_downsample;
-    PointType point_in_world;
-
-    const double inv_map_resolution = 1.0 / m_config.map_resolution;
-    const double half_map_resolution = 0.5 * m_config.map_resolution;
-
-    for (int i = 0; i < size; i++)
-    {
-        const PointType &p = m_cloud_down_lidar->points[i];
-        Eigen::Vector3d point(p.x, p.y, p.z);
-        point = state.r_wi * (state.r_il * point + state.t_il) + state.t_wi;
-        
-        point_in_world.x = point(0);
-        point_in_world.y = point(1);
-        point_in_world.z = point(2);
-        point_in_world.intensity = m_cloud_down_lidar->points[i].intensity;
-        // 如果该点附近没有近邻点则需要添加到地图中
-        if (m_nearest_points[i].empty())
-        {
-            point_to_add.push_back(point_in_world);
-            continue;
-        }
-
-        const PointVec &points_near = m_nearest_points[i];
-        bool need_add = true;
-        PointType downsample_result, mid_point;
-        mid_point.x = std::floor(point_in_world.x * inv_map_resolution) * m_config.map_resolution + half_map_resolution;
-        mid_point.y = std::floor(point_in_world.y * inv_map_resolution) * m_config.map_resolution + half_map_resolution;
-        mid_point.z = std::floor(point_in_world.z * inv_map_resolution) * m_config.map_resolution + half_map_resolution;
-
-        // 如果该点所在的voxel没有点，则直接加入地图，且不需要降采样
-        if (fabs(points_near[0].x - mid_point.x) > half_map_resolution
-            && fabs(points_near[0].y - mid_point.y) > half_map_resolution
-            && fabs(points_near[0].z - mid_point.z) > half_map_resolution)
-        {
-            point_no_need_downsample.push_back(point_in_world);
-            continue;
-        }
-        float dist = sq_dist(point_in_world, mid_point);
-
-        for (int readd_i = 0; readd_i < m_config.near_search_num; readd_i++)
-        {
-            // 如果该点的近邻点较少，则需要加入到地图中
-            if (points_near.size() < static_cast<size_t>(m_config.near_search_num))
-                break;
-            // 如果该点的近邻点距离voxel中心点的距离比该点距离voxel中心点更近，则不需要加入该点
-            if (sq_dist(points_near[readd_i], mid_point) < dist)
-            {
-                need_add = false;
-                break;
-            }
-        }
-        if (need_add)
-            point_to_add.push_back(point_in_world);
-    }
-    m_ikdtree->Add_Points(point_to_add, true);
-    m_ikdtree->Add_Points(point_no_need_downsample, false);
-}
-
-void LidarProcessor::initCloudMap(PointVec &point_vec)
-{
-    m_ikdtree->Build(point_vec);
+    m_local_map.init(init_cloud_world);
 }
 
 void LidarProcessor::process(SyncPackage &package)
@@ -176,15 +45,6 @@ void LidarProcessor::process(SyncPackage &package)
     //}
 
     m_cloud_down_lidar = package.lidar.cloud;
-
-    trimCloudMap();
-    initVectors();
-    m_kf->update();
-    incrCloudMap();
-}
-
-void LidarProcessor::initVectors()
-{
     const size_t last_size = m_point_selected_flag.size();
     const size_t size = m_cloud_down_lidar->points.size();
 
@@ -192,8 +52,28 @@ void LidarProcessor::initVectors()
         m_normal_matrix.resize(3, size);
         m_residuals.resize(size);
         m_point_selected_flag.resize(size);
-        m_nearest_points.resize(size);
+        m_point_add_flag.resize(size);
     }
+
+    m_cloud_world->resize(size);
+
+    if (m_ptids_map.empty()) {
+        m_kdtree.setInputCloud(m_local_map.get_map_cloud());
+    } else {
+        pcl::IndicesPtr indices = std::make_shared<pcl::Indices>(m_ptids_map);
+        m_kdtree.setInputCloud(m_local_map.get_map_cloud(), indices);
+    }
+
+    m_kf->update();
+
+    std::vector<int> ptids_add;
+    for (int i=0; i<size; ++i) {
+        if (m_point_add_flag[i]) {
+            ptids_add.push_back(i);
+        }
+    }
+
+    m_local_map.update(m_kf->x().t_wi, m_cloud_world, ptids_add);
 }
 
 void LidarProcessor::updateLossFunc(State &state, SharedState &share_data)
@@ -201,20 +81,28 @@ void LidarProcessor::updateLossFunc(State &state, SharedState &share_data)
     const size_t size = m_cloud_down_lidar->size();
     const int last = m_config.near_search_num - 1;
     std::fill(m_point_selected_flag.begin(), m_point_selected_flag.end(), 0);
+    std::fill(m_point_add_flag.begin(), m_point_add_flag.end(), 0);
 
     int effect_feat_num = 0;
+
+    const auto map_cloud = m_local_map.get_map_cloud();
+    const double map_resolution = m_local_map.get_config().map_resolution;
+    const double min_sqr_dist_add = map_resolution * map_resolution;
 
     omp_set_num_threads(MP_PROC_NUM);
 
 #pragma omp parallel
     {
         std::vector<float> point_sq_dist(m_config.near_search_num);
+        std::vector<int>   ptids_near(m_config.near_search_num);
+
+        PointVec points_near(m_config.near_search_num);
 
 #pragma omp for schedule(dynamic) reduction(+:effect_feat_num)
     for (size_t i = 0; i < size; i++)
     {
         const PointType &point_body = m_cloud_down_lidar->points[i];
-        PointType point_world;
+        PointType& point_world = m_cloud_world->points[i];
         Eigen::Vector3d point_body_vec(point_body.x, point_body.y, point_body.z);
         Eigen::Vector3d point_world_vec = state.r_wi * (state.r_il * point_body_vec + state.t_il) + state.t_wi;
         point_world.x = point_world_vec(0);
@@ -222,12 +110,23 @@ void LidarProcessor::updateLossFunc(State &state, SharedState &share_data)
         point_world.z = point_world_vec(2);
         point_world.intensity = point_body.intensity;
 
-        auto &points_near = m_nearest_points[i];
-        m_ikdtree->Nearest_Search(point_world, m_config.near_search_num, points_near, point_sq_dist);
-        if (points_near.size() < m_config.near_search_num)
+        m_kdtree.nearestKSearch(point_world, m_config.near_search_num, ptids_near, point_sq_dist);
+
+        if (points_near.size() < m_config.near_search_num) {
+            m_point_add_flag[i] = 1;
             continue;
+        }
+
+        if (point_sq_dist[0] > min_sqr_dist_add) {
+            m_point_add_flag[i] = 1;
+        }
+
         if (point_sq_dist[last] > 5.0)
             continue;
+
+        for (int k=0;k<m_config.near_search_num;++k) {
+            points_near[k] = map_cloud->points[ptids_near[k]];
+        }
 
         Eigen::Vector4d pabcd;
         if (esti_plane(points_near, 0.1, pabcd))

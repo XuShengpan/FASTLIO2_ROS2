@@ -22,7 +22,7 @@ void MapBuilder::process(SyncPackage &package)
     if (m_status == BuilderStatus::MAP_INIT)
     {
         CloudType::Ptr cloud_world = LidarProcessor::transformCloud(package.lidar.cloud, m_lidar_processor->r_wl(), m_lidar_processor->t_wl());
-        m_lidar_processor->initCloudMap(cloud_world->points);
+        m_lidar_processor->initCloudMap(cloud_world);
         m_status = BuilderStatus::MAPPING;
         return;
     }

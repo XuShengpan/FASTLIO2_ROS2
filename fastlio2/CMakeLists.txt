@@ -41,15 +41,10 @@ find_package(yaml-cpp REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 
-set(SRC_LIST src/map_builder/commons.cpp
-             src/map_builder/ieskf.cpp
-             src/map_builder/imu_processor.cpp
-             src/map_builder/ikd_Tree.cpp
-             src/map_builder/lidar_processor.cpp
-             src/map_builder/map_builder.cpp
-             src/utils.cpp)
+file(GLOB SRC_LIST_1   "./src/*.cpp")
+file(GLOB SRC_LIST_2   "./src/map_builder/*.cpp")
 
-add_executable(lio_node src/lio_node.cpp ${SRC_LIST})
+add_executable(lio_node src/lio_node.cpp ${SRC_LIST_1} ${SRC_LIST_2})
 ament_target_dependencies(lio_node rclcpp std_msgs tf2 tf2_ros nav_msgs sensor_msgs livox_ros_driver2 pcl_conversions geometry_msgs)
 target_link_libraries(lio_node
   yaml-cpp
