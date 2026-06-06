@@ -37,6 +37,11 @@ void LidarProcessor::initCloudMap(CloudType::Ptr init_cloud_world)
 
 void LidarProcessor::process(SyncPackage &package)
 {
+    static  int i_frame = 0;
+    if ((i_frame % 5) && !(i_frame % 3)) {
+        ++i_frame;
+        return;
+    }
     // m_kf->setLossFunction([&](State &s, SharedState &d)
     //                       { updateLossFunc(s, d); });
     // m_kf->setStopFunction([&](const V21D &delta) -> bool
@@ -73,17 +78,19 @@ void LidarProcessor::process(SyncPackage &package)
             m_voxel_map.add_point(m_cloud_world->points[i]);
         }
     }
+    if (i_frame % 3) {
+        m_voxel_map.gather_local_map(m_cloud_world->points, m_map_cloud->points);
+        m_map_cloud->width = m_map_cloud->points.size();
 
-    m_voxel_map.gather_local_map(m_cloud_world->points, m_map_cloud->points);
-    m_map_cloud->width = m_map_cloud->points.size();
+        int n0 = m_map_cloud->size();
+        m_map_filter.setInputCloud(m_map_cloud);
+        m_map_filter.filter(*m_map_cloud);
+        int n1 = m_map_cloud->size();
+        //std::cout<<"map cloud downsample: "<<n0<<" -> "<<n1<<std::endl;
 
-    int n0 = m_map_cloud->size();
-    m_map_filter.setInputCloud(m_map_cloud);
-    m_map_filter.filter(*m_map_cloud);
-    int n1 = m_map_cloud->size();
-    //std::cout<<"map cloud downsample: "<<n0<<" -> "<<n1<<std::endl;
-
-    m_kdtree.setInputCloud(m_map_cloud);
+        m_kdtree.setInputCloud(m_map_cloud);
+    }
+    ++i_frame;
 }
 
 void LidarProcessor::updateLossFunc(State &state, SharedState &share_data)
