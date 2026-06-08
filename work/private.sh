@@ -115,6 +115,25 @@ sed -i 's/imu_processor/update_processor/g' imu_processor.cpp
 sed -i 's/imu_processor/update_processor/g' map_builder.h
 sed -i 's/imu_processor/update_processor/g' map_builder.cpp
 
+sed -i 's/IESKF/OdomFilter/g' ieskf.h
+sed -i 's/IESKF/OdomFilter/g' ieskf.cpp
+sed -i 's/IESKF/OdomFilter/g' lidar_processor.h
+sed -i 's/IESKF/OdomFilter/g' lidar_processor.cpp
+sed -i 's/IESKF/OdomFilter/g' imu_processor.h
+sed -i 's/IESKF/OdomFilter/g' imu_processor.cpp
+sed -i 's/IESKF/OdomFilter/g' map_builder.h
+sed -i 's/IESKF/OdomFilter/g' map_builder.cpp
+sed -i 's/IESKF/OdomFilter/g' ../lio_node.cpp
+
+sed -i 's/ieskf.h/odom_filter.h/g' ieskf.cpp
+sed -i 's/ieskf.h/odom_filter.h/g' lidar_processor.h
+sed -i 's/ieskf.h/odom_filter.h/g' imu_processor.h
+sed -i 's/ieskf.h/odom_filter.h/g' map_builder.h
+sed -i 's/ieskf.h/odom_filter.h/g' ../lio_node.cpp
+
+mv ieskf.h odom_filter.h
+mv ieskf.cpp odom_filter.cpp
+
 mv lidar_processor.h correct_processor.h
 mv lidar_processor.cpp correct_processor.cpp
 
