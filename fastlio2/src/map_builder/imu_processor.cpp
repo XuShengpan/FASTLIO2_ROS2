@@ -101,8 +101,8 @@ void IMUProcessor::undistort(SyncPackage &package)
     V3D cur_t_il = m_kf->x().t_il;
     auto it_pcl = package.lidar.cloud->points.end() - 1;
 
-    M3D Rk_inv = cur_r_wi.transpose();
-    M3D R_L_I = cur_r_il.transpose();
+    M3D R_Lk_inv = (cur_r_wi * cur_r_il).transpose();
+    V3D t_Lk = cur_r_wi * cur_t_il + cur_t_wi;
 
     const auto it_begin = package.lidar.cloud->points.begin();
 
@@ -122,10 +122,11 @@ void IMUProcessor::undistort(SyncPackage &package)
         for (; it_pcl->curvature > time_scale; it_pcl--)
         {
             dt = it_pcl->curvature / double(1000) - head->offset;
-            V3D point(it_pcl->x, it_pcl->y, it_pcl->z);
-            M3D point_rot = imu_r_wi * Sophus::SO3d::exp(imu_gyro * dt).matrix();
-            V3D point_pos = imu_t_wi + imu_vel * dt + 0.5 * imu_acc * dt * dt;
-            V3D p_compensate = R_L_I * (Rk_inv * (point_rot * (cur_r_il * point + cur_t_il) + point_pos - cur_t_wi) - cur_t_il);
+            M3D rot_t = imu_r_wi * Sophus::SO3d::exp(imu_gyro * dt).matrix();
+            V3D pos_t = imu_t_wi + imu_vel * dt + 0.5 * imu_acc * dt * dt;
+            V3D pt_global = rot_t * (cur_r_il * V3D(it_pcl->x, it_pcl->y, it_pcl->z) + cur_t_il) + pos_t;
+            V3D p_compensate = R_Lk_inv * (pt_global - t_Lk);
+
             it_pcl->x = p_compensate(0);
             it_pcl->y = p_compensate(1);
             it_pcl->z = p_compensate(2);
