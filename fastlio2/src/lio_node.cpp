@@ -376,7 +376,10 @@ int main(int argc, char **argv)
 {
     std::cout.setf(std::ios::fixed);
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<LIONode>());
+    auto node = std::make_shared<LIONode>();
+    rclcpp::executors::MultiThreadedExecutor executor;
+    executor.add_node(node);
+    executor.spin();
     rclcpp::shutdown();
     return 0;
 }
